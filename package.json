@@ -1,0 +1,8 @@
+{
+  "name": "pass",
+  "version": "0.0.1",
+  "main": "index.html",
+  "dependencies": {
+    "simple-peer": "^5.11.5"
+  }
+}
