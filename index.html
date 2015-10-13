@@ -2,6 +2,10 @@
 <html>
   <head>
     <title>Pass</title>
+    
+    <script src="http://code.jquery.com/jquery-1.11.3.min.js"></script>
+    <script src="http://code.jquery.com/jquery-migrate-1.2.1.min.js"></script>
+    
     <script src="main.js"></script>
     
     <style type="text/css">
@@ -9,17 +13,33 @@
     video
     {
         position: fixed; 
-        top: -25px;
+        top: 0px;
         left: 0px;
         width: 100%;
         height: 100%;
+    }
+    
+    #receivePage, #sendPage
+    {
+        display: none;
     }
     
     </style>
     
   </head>
   <body>
-    <h1>Pass</h1>
-    <video></video>
+    <div class="page" id="startPage">
+        <h1>Pass</h1>
+        
+        <button class="startButton" data-type="send">Send</button> <button class="startButton" data-type="receive">Receive</button>
+    </div>
+    
+    <div class="page" id="receivePage">
+        <video></video>
+    </div>
+    
+    <div class="page" id="sendPage">
+    <button id="sendButton">Pick Window</button>
+    </div>
   </body>
 </html>
