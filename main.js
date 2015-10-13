@@ -117,6 +117,15 @@ function startSocketServer()
 			var video = document.querySelector('video');
 			video.src = window.URL.createObjectURL(stream);
 			video.play();
+			video.addEventListener('playing', getVideoSize, false);
+			
+			function getVideoSize()
+			{
+				win.width = video.videoWidth;
+				win.height = video.videoHeight;
+
+				video.removeEventListener('playing', getVideoSize, false);
+			}
 			
 		});
 	});
