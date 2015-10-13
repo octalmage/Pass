@@ -1,3 +1,13 @@
+/*
+ ____
+|  _ \ __ _ ___ ___ 
+| |_) / _` / __/ __|
+|  __/ (_| \__ \__ \
+|_|   \__,_|___/___/
+By: Jason Stallings
+URL: http://github.com/octalmage/pass
+*/
+
 var gui = require("nw.gui");
 var SimplePeer = require("simple-peer");
 var os = require("os");
