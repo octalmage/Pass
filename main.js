@@ -150,7 +150,7 @@ function resizeWindow()
 	var video = document.querySelector('video');
 	
 	win.width = video.videoWidth;
-	win.height = video.videoHeight;
+	win.height = video.videoHeight + 22;
 	
 	setTimeout(resizeWindow, 1000);
 
