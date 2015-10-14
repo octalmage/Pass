@@ -21,12 +21,61 @@ var pages = ["start", "receive", "send"];
 
 var app, io, hostname, ip, pingTimer, socket, peer;
 
+var app_version = gui.App.manifest.version;
+
 //Focus the window.
 win.show();
 
 win.showDevTools();
 process.on("exit", cleanup);
 process.on("SIGINT", cleanup);
+
+if (process.platform === "darwin")
+{
+	var nativeMenuBar = new gui.Menu(
+	{
+		type: "menubar"
+	});
+	nativeMenuBar.createMacBuiltin("Pass");
+	win.menu = nativeMenuBar;
+}
+
+//Create tray icon.
+var tray = new gui.Tray(
+{
+	icon: "tray.png",
+	iconsAreTemplates: false
+});
+
+//Give it a menu.
+var menu = new gui.Menu();
+menu.append(new gui.MenuItem(
+{
+	label: "Pass"
+}));
+menu.append(new gui.MenuItem(
+{
+	type: "separator"
+}));
+menu.append(new gui.MenuItem(
+{
+	label: "v" + app_version
+}));
+
+menu.append(new gui.MenuItem(
+{
+	type: "separator"
+}));
+
+menu.append(new gui.MenuItem(
+{
+	label: "Exit",
+	click: function()
+	{
+		gui.App.quit();
+	},
+}));
+tray.menu = menu;
 
 $(document).on("ready", function()
 {
