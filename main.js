@@ -136,18 +136,25 @@ function startSocketServer()
 			var video = document.querySelector('video');
 			video.src = window.URL.createObjectURL(stream);
 			video.play();
-			video.addEventListener('playing', getVideoSize, false);
-			
-			function getVideoSize()
-			{
-				win.width = video.videoWidth;
-				win.height = video.videoHeight;
-
-				video.removeEventListener('playing', getVideoSize, false);
-			}
+			video.addEventListener('playing', resizeWindow, false);
 			
 		});
 	});
+}
+
+/**
+ * Resize the cloned window to the video size.
+ */
+function resizeWindow()
+{
+	var video = document.querySelector('video');
+	
+	win.width = video.videoWidth;
+	win.height = video.videoHeight;
+	
+	setTimeout(resizeWindow, 1000);
+
+	//video.removeEventListener('playing', getVideoSize, false);
 }
 
 /*
