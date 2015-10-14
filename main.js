@@ -25,6 +25,8 @@ var app, io, hostname, ip, pingTimer, socket, peer;
 win.show();
 
 win.showDevTools();
+process.on("exit", cleanup);
+process.on("SIGINT", cleanup);
 
 $(document).on("ready", function()
 {
@@ -265,4 +267,25 @@ function switchPage(page)
 	$(".page").hide();
 
 	$("#" + page + "Page").show();
+}
+
+/**
+ * Close all servers and exit the app.
+ */
+function cleanup()
+{
+	console.log("cleanup");
+	peer.destroy();
+	
+	if (sender)
+	{
+		socket.close();
+	}
+	else
+	{
+		app.close();
+		io.close();
+	}
+	
+	gui.App.quit();
 }
