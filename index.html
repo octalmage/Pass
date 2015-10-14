@@ -17,11 +17,23 @@
         left: 0px;
         width: 100%;
         height: 100%;
+        z-index: 5;
     }
     
     #receivePage, #sendPage
     {
         display: none;
+    }
+    
+    #dragBar
+    {
+        position: fixed;
+        top: 0px;
+        left: 0px;
+        width: 100%;
+        height: 25px;
+        z-index: 10;
+        -webkit-app-region: drag
     }
     
     </style>
@@ -35,6 +47,7 @@
     </div>
     
     <div class="page" id="receivePage">
+        <div id="dragBar"></div>
         <video></video>
     </div>
     
