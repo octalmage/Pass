@@ -26,7 +26,7 @@ var app_version = gui.App.manifest.version;
 //Focus the window.
 win.show();
 
-win.showDevTools();
+//win.showDevTools();
 process.on("exit", cleanup);
 process.on("SIGINT", cleanup);
 
