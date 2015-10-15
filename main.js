@@ -15,16 +15,16 @@ var request = require("request");
 
 var win = gui.Window.get();
 
-var sender = 0;
+//Only display when video is playing.
+win.width = 0;
+win.height= 0;
 
-var pages = ["start", "receive", "send"];
+var sender = 0;
+var init = null;
 
 var app, io, hostname, ip, pingTimer, socket, peer;
 
 var app_version = gui.App.manifest.version;
-
-//Focus the window.
-win.show();
 
 //win.showDevTools();
 process.on("exit", cleanup);
@@ -77,6 +77,29 @@ menu.append(new gui.MenuItem(
 }));
 tray.menu = menu;
 
+//Hotkey Stuff
+var option = {
+	key: "Ctrl+Alt+P",
+	active: function()
+	{
+		sender = 1;
+		sendWindow();
+	},
+	failed: function(msg)
+	{
+		console.log(msg);
+	}
+};
+
+var shortcut = new gui.Shortcut(option);
+
+gui.App.registerGlobalHotKey(shortcut);
+
+//Get ready for incomming connections.
+startPinging();
+startSocketServer();
+
+//App start.
 $(document).on("ready", function()
 {
 	$(".startButton").on("click", function()
@@ -87,21 +110,22 @@ $(document).on("ready", function()
 		{
 			sender = 1;
 			switchPage("send");
-			
+
 		}
 		else
 		{
-			switchPage("receive");
-			
+			//switchPage("receive");
+
 			startPinging();
 			startSocketServer();
 		}
 	});
-	
+
 	$("#sendButton").on("click", function()
-	{	
+	{
 		sendWindow();
 	});
+
 });
 
 /*
@@ -141,52 +165,86 @@ function ping()
 }
 
 /**
- * Get local IP.
- * TODO: Make sure this is cross platform.
- * @return {string} IP Address.
- */
-function getIP()
-{
-	var networkInterfaces = os.networkInterfaces();
-	var ip = networkInterfaces.en0[1].address;
-	return ip;
-}
-
-/**
  * Starts a socket.io and web server for incomming connections from the sender.
- * @return {[type]} [description]
  */
 function startSocketServer()
 {
 	app = require("http").createServer(function(req, res) {});
 	io = require("socket.io")(app);
-	
+
 	app.listen(8890);
-	
-	io.on('connection', function(rsocket) 
+
+	io.on('connection', function(rsocket)
 	{
+		var incommingHost;
 		console.log("Sender connected.");
-		
+
 		peer = new SimplePeer();
 		
-		rsocket.on('signal', function (data) 
+		rsocket.on('request', function(data)
 		{
-    		peer.signal(data);
-  		});
-		
+			incommingHost = data;
+		});
+
+		rsocket.on('signal', function(data)
+		{
+			peer.signal(data);
+		});
+
 		peer.on('signal', function(data)
 		{
 			rsocket.emit("signal", data);
 		});
-		
+
 		peer.on('stream', function(stream)
 		{
+			requestDialog(incommingHost, stream);
+		});
+		
+		//Sender has stopped sending.
+		peer.on('close', function()
+		{
+			peer.destroy();
+			app.close();
+			io.close();
+			win.hide();
+		});
+	});
+}
+
+/**
+ * Dialog to accept incomming window request. 
+ * @param  {string} host   The hostname of the sending computer.
+ * @param  {MediaStream} stream The stream of the incomming window.
+ */
+function requestDialog(host, stream)
+{
+	var dialog = gui.Window.open('request-dialog.html',
+	{
+		width: 400,
+		height: 200,
+		toolbar: false
+	});
+	
+	dialog.on("loaded", function() 
+	{
+		dialog.window.$("#host").text(host);
+		
+		dialog.window.$("#acceptButton").on("click", function()
+		{
+			dialog.close();
+			win.show();
 			//got remote video stream, now let's show it in a video tag.
 			var video = document.querySelector('video');
 			video.src = window.URL.createObjectURL(stream);
 			video.play();
 			video.addEventListener('playing', resizeWindow, false);
-			
+		});
+		
+		dialog.window.$("#declineButton").on("click", function()
+		{
+			dialog.close();
+			peer.destroy();
 		});
 	});
 }
@@ -197,10 +255,10 @@ function startSocketServer()
 function resizeWindow()
 {
 	var video = document.querySelector('video');
-	
+
 	win.width = video.videoWidth;
-	win.height = video.videoHeight + 22;
-	
+	win.height = video.videoHeight;
+
 	setTimeout(resizeWindow, 1000);
 
 	//video.removeEventListener('playing', getVideoSize, false);
@@ -220,7 +278,12 @@ function resizeWindow()
  */
 function sendWindow()
 {
-	gui.Screen.Init();
+	if (!init)
+	{
+		init = 1;
+		gui.Screen.Init();
+	}
+	
 	gui.Screen.chooseDesktopMedia(["window"], function(streamId)
 	{
 		var vid_constraint = {
@@ -237,8 +300,14 @@ function sendWindow()
 		{
 			audio: false,
 			video: vid_constraint
-		}, sendMedia, function() {});
+		}, pickDialog, function() 
+		{
+			//User selected cancel.
+			win.hide();
+		});
 	});
+	
+	win.show();
 }
 
 /**
@@ -267,7 +336,19 @@ function getReceivers(callback)
 		if (!error && response.statusCode == 200)
 		{
 			var receivers = JSON.parse(body);
-			callback(receivers[0].ip);
+			
+			var ip = getIP();
+			
+			//Remove local host from array.
+			for (var x in receivers)
+			{
+				if (receivers[x].ip === ip)
+				{
+					receivers.splice(x, 1);
+				}
+			}
+			
+			callback(receivers);
 		}
 	});
 }
@@ -281,28 +362,98 @@ function connectToSocketServer(ip, stream)
 {
 	//Use socket.io for signal data.
 	socket = require("socket.io-client")("http://" + ip + ":8890");
-	
+
 	socket.on("connect", function()
 	{
+		console.log("Connected to receiver.");
+		
+		//Send our hostname for the dialog.
+		socket.emit("request", os.hostname());
+		
 		//Start our peer to peer connection.
 		peer = new SimplePeer(
 		{
 			initiator: true,
 			stream: stream
 		});
-		
+
 		//Send the signal to the receiver. 
 		peer.on('signal', function(data)
 		{
 			socket.emit("signal", data);
 		});
+		
+		//Receiver has stopped viewing.
+		//TODO: Remove this if it isn't working.
+		peer.on('close', function()
+		{
+			console.log("Peer disconnected.");
+			peer.destroy();
+			peer = null;
+			socket.close();
+			socket = null;
+			win.hide();
+		});
+	});
+
+	//When we receive the signal from socket.io, pass it to peer.
+	socket.on("signal", function(data)
+	{
+		peer.signal(data);
 	});
 	
-	//When we receive the signal from socket.io, pass it to peer.
-	socket.on("signal", function (data)
+	socket.on("close", function()
 	{
-    	peer.signal(data);
+		console.log("Socket disconnected.");
+		
+		peer.destroy();
+		socket.close();
+		win.hide();
 	});
+}
+
+/**
+ * Dialog to pick the host to send the window stream to.
+ * @param  {MediaStream} stream Stream from getUserMedia.
+ */
+function pickDialog(stream)
+{
+	getReceivers(openDialog);
+	
+	function openDialog(hosts)
+	{
+		var dialog = gui.Window.open('pick-dialog.html',
+		{
+			width: 400,
+			height: 200,
+			toolbar: false
+		});
+		
+		dialog.on("loaded", function() 
+		{
+			var radioTemplate = '<input type="radio" name="host" value="{{ip}}">{{host}}<br>';
+			for (var x in hosts)
+			{
+				var thisRadio = radioTemplate.replace("{{ip}}", hosts[x].ip).replace("{{host}}", hosts[x].name);
+				dialog.window.$("#list").append(thisRadio);
+			}
+			
+			dialog.window.$("#sendButton").on("click", function()
+			{
+				var selectedHost = dialog.window.$("input[name=host]:checked").val();
+				dialog.close();
+				
+				//Send stream to selected host.
+				connectToSocketServer(selectedHost, stream);
+			});
+			
+			dialog.window.$("#cancelButton").on("click", function()
+			{
+				win.hide();
+				dialog.close();
+			});
+		});
+	}
 }
 
 /*
@@ -326,13 +477,25 @@ function switchPage(page)
 }
 
 /**
+ * Get local IP.
+ * TODO: Make sure this is cross platform.
+ * @return {string} IP Address.
+ */
+function getIP()
+{
+	var networkInterfaces = os.networkInterfaces();
+	var ip = networkInterfaces.en0[1].address;
+	return ip;
+}
+
+/**
  * Close all servers and exit the app.
  */
 function cleanup()
 {
 	console.log("cleanup");
 	peer.destroy();
-	
+
 	if (sender)
 	{
 		socket.close();
@@ -342,6 +505,6 @@ function cleanup()
 		app.close();
 		io.close();
 	}
-	
+
 	gui.App.quit();
 }

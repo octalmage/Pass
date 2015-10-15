@@ -20,11 +20,6 @@
         z-index: 5;
     }
     
-    #receivePage, #sendPage
-    {
-        display: none;
-    }
-    
     #dragBar
     {
         position: fixed;
@@ -40,19 +35,9 @@
     
   </head>
   <body>
-    <div class="page" id="startPage">
-        <h1>Pass</h1>
-        
-        <button class="startButton" data-type="send">Send</button> <button class="startButton" data-type="receive">Receive</button>
-    </div>
-    
-    <div class="page" id="receivePage">
+
         <div id="dragBar"></div>
         <video></video>
-    </div>
-    
-    <div class="page" id="sendPage">
-    <button id="sendButton">Pick Window</button>
-    </div>
+        
   </body>
 </html>
