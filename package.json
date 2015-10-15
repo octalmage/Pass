@@ -11,8 +11,9 @@
   "window": {
     "title": "Pass",
     "toolbar": false,
-    "frame": true,
-    "show_in_taskbar": true
+    "frame": false,
+    "show_in_taskbar": false,
+    "show": false
   },
   "single-instance": false
 }
