@@ -5,6 +5,6 @@ Want to show a friend or coworker something? Just "Pass" them the window! With t
 
 ## [Download](https://github.com/octalmage/Pass/releases/latest)
 
-##License
+## License
 
 GPL v3
