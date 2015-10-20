@@ -15,5 +15,16 @@
     "show_in_taskbar": false,
     "show": false
   },
-  "single-instance": false
+  "single-instance": false,
+  "description": "Pass a window to a friend.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/octalmage/Pass.git"
+  },
+  "author": "Jason Stallings <jason@stallin.gs>",
+  "license": "GPL-3.0",
+  "bugs": {
+    "url": "https://github.com/octalmage/Pass/issues"
+  },
+  "homepage": "https://github.com/octalmage/Pass#readme"
 }
