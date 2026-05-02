@@ -28,6 +28,7 @@ let signalIO = null;
 let activePeer = null;
 let activeSocket = null;
 let activeReceiverPeer = null;
+let hiddenSourceState = null;
 
 const els = {
   video: document.querySelector("video"),
@@ -214,6 +215,10 @@ async function sendWindow() {
   }
 
   console.log("[Pass] got stream, tracks:", stream.getTracks().length);
+
+  const pendingHide = await ipcRenderer.invoke("capture-source-window");
+  console.log("[Pass] captured source window:", pendingHide);
+
   const peers = await findPeers();
   console.log("[Pass] showing peer picker with", peers.length, "peers");
   const target = await pickPeer(peers);
@@ -230,6 +235,14 @@ async function sendWindow() {
       teardownSender(stream);
     });
   });
+
+  if (pendingHide) {
+    hiddenSourceState = await ipcRenderer.invoke(
+      "hide-source-window",
+      pendingHide,
+    );
+    console.log("[Pass] source hidden:", hiddenSourceState);
+  }
 
   connectAndSend(target, stream);
 }
@@ -345,6 +358,11 @@ function teardownSender(stream) {
       activeSocket.close();
     } catch (_) {}
     activeSocket = null;
+  }
+  if (hiddenSourceState) {
+    const state = hiddenSourceState;
+    hiddenSourceState = null;
+    ipcRenderer.invoke("restore-source-window", state).catch(() => {});
   }
 }
 
