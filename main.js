@@ -7,19 +7,19 @@ const {
   ipcMain,
   desktopCapturer,
   nativeImage,
+  session,
 } = require("electron");
-const path = require("path");
 
 let mainWindow = null;
 let tray = null;
+let isQuitting = false;
 
 function createMainWindow() {
   mainWindow = new BrowserWindow({
-    width: 1,
-    height: 1,
+    width: 480,
+    height: 320,
     show: false,
     frame: false,
-    transparent: true,
     skipTaskbar: true,
     webPreferences: {
       nodeIntegration: true,
@@ -29,6 +29,13 @@ function createMainWindow() {
   });
 
   mainWindow.loadFile("index.html");
+
+  mainWindow.on("close", (e) => {
+    if (!isQuitting) {
+      e.preventDefault();
+      mainWindow.hide();
+    }
+  });
 }
 
 function createTray() {
@@ -43,6 +50,14 @@ function createTray() {
     { label: "v" + app.getVersion(), enabled: false },
     { type: "separator" },
     { label: "Send Window", click: () => triggerSend() },
+    {
+      label: "Toggle DevTools",
+      click: () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.toggleDevTools({ mode: "detach" });
+        }
+      },
+    },
     { label: "Exit", click: () => app.quit() },
   ]);
   tray.setContextMenu(menu);
@@ -67,6 +82,23 @@ app.whenReady().then(() => {
   Menu.setApplicationMenu(
     process.platform === "darwin" ? Menu.getApplicationMenu() : null,
   );
+
+  session.defaultSession.setDisplayMediaRequestHandler(
+    async (_request, callback) => {
+      try {
+        const sources = await desktopCapturer.getSources({ types: ["window"] });
+        const usable = sources.filter((s) => s.name && s.name.trim());
+        callback(usable[0] ? { video: usable[0] } : {});
+      } catch (_) {
+        callback({});
+      }
+    },
+    { useSystemPicker: true },
+  );
+});
+
+app.on("before-quit", () => {
+  isQuitting = true;
 });
 
 app.on("window-all-closed", (e) => {
@@ -77,20 +109,24 @@ app.on("will-quit", () => {
   globalShortcut.unregisterAll();
 });
 
-ipcMain.handle("get-sources", async () => {
-  const sources = await desktopCapturer.getSources({
-    types: ["window"],
-    thumbnailSize: { width: 0, height: 0 },
-  });
-  return sources.map((s) => ({ id: s.id, name: s.name }));
-});
-
-ipcMain.on("show-window", () => {
-  if (mainWindow) mainWindow.show();
+ipcMain.on("show-window", (_e, opts = {}) => {
+  if (!mainWindow) return;
+  if (opts.center) mainWindow.center();
+  if (opts.alwaysOnTop !== undefined) {
+    mainWindow.setAlwaysOnTop(!!opts.alwaysOnTop);
+  }
+  mainWindow.show();
+  mainWindow.focus();
+  if (process.platform === "darwin") {
+    app.focus({ steal: true });
+  }
 });
 
 ipcMain.on("hide-window", () => {
-  if (mainWindow) mainWindow.hide();
+  if (mainWindow) {
+    mainWindow.setAlwaysOnTop(false);
+    mainWindow.hide();
+  }
 });
 
 ipcMain.on("set-window-size", (_e, { width, height }) => {

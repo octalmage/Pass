@@ -27,6 +27,7 @@ let signalServer = null;
 let signalIO = null;
 let activePeer = null;
 let activeSocket = null;
+let activeReceiverPeer = null;
 
 const els = {
   video: document.querySelector("video"),
@@ -34,19 +35,25 @@ const els = {
   pickList: document.getElementById("pickList"),
   pickSend: document.getElementById("pickSend"),
   pickCancel: document.getElementById("pickCancel"),
-  pickSourceModal: document.getElementById("pickSourceModal"),
-  pickSourceList: document.getElementById("pickSourceList"),
-  pickSourceCancel: document.getElementById("pickSourceCancel"),
   requestModal: document.getElementById("requestModal"),
   requestHost: document.getElementById("requestHost"),
   requestAccept: document.getElementById("requestAccept"),
   requestDecline: document.getElementById("requestDecline"),
 };
 
+console.log("[Pass] renderer booting on", os.hostname());
 startReceiver();
 advertisePresence();
 
 ipcRenderer.on("hotkey-send", () => sendWindow());
+
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && els.video.srcObject && activeReceiverPeer) {
+    try {
+      activeReceiverPeer.destroy();
+    } catch (_) {}
+  }
+});
 
 /* ---------------- Discovery ---------------- */
 
@@ -60,18 +67,28 @@ function advertisePresence() {
 
 function findPeers(timeoutMs = 1500) {
   return new Promise((resolve) => {
-    if (browser) browser.stop();
-    browser = bonjour.find({ type: SERVICE_TYPE });
+    try {
+      if (browser) browser.stop();
+    } catch (_) {}
+    try {
+      browser = bonjour.find({ type: SERVICE_TYPE });
+    } catch (err) {
+      console.error("bonjour.find failed:", err);
+      resolve([]);
+      return;
+    }
     setTimeout(() => {
       const myHost = os.hostname();
-      const peers = browser.services
-        .filter((s) => s.name !== myHost)
+      const services = (browser && browser.services) || [];
+      const peers = services
+        .filter((s) => s && s.name && s.name !== myHost)
         .map((s) => ({
           name: s.name,
           host: s.host,
           addresses: s.addresses,
           port: s.port,
         }));
+      console.log("[Pass] discovered peers:", peers);
       resolve(peers);
     }, timeoutMs);
   });
@@ -87,6 +104,7 @@ function startReceiver() {
   signalServer.listen(SIGNAL_PORT);
 
   signalIO.on("connection", (rsocket) => {
+    console.log("[Pass] receiver: incoming socket connection");
     let incomingHost = "unknown";
     const peer = new SimplePeer({ trickle: true });
 
@@ -103,6 +121,7 @@ function startReceiver() {
     });
 
     peer.on("stream", (stream) => {
+      console.log("[Pass] receiver: stream arrived from", incomingHost);
       requestDialog(incomingHost, stream, peer);
     });
 
@@ -126,8 +145,15 @@ function teardownReceiver(peer) {
   try {
     peer.destroy();
   } catch (_) {}
+  if (activeReceiverPeer === peer) activeReceiverPeer = null;
+  if (els.video.srcObject) {
+    els.video.srcObject.getTracks().forEach((t) => t.stop());
+    els.video.srcObject = null;
+  }
+  els.video.removeEventListener("loadedmetadata", resizeWindowToVideo);
+  els.video.removeEventListener("resize", resizeWindowToVideo);
+  ipcRenderer.send("set-window-size", { width: 1, height: 1 });
   ipcRenderer.send("hide-window");
-  els.video.srcObject = null;
 }
 
 function requestDialog(host, stream, peer) {
@@ -137,10 +163,13 @@ function requestDialog(host, stream, peer) {
   const accept = () => {
     cleanup();
     hideModal(els.requestModal);
+    activeReceiverPeer = peer;
     ipcRenderer.send("show-window");
     els.video.srcObject = stream;
     els.video.play();
-    els.video.addEventListener("playing", resizeWindowToVideo, { once: true });
+    els.video.addEventListener("loadedmetadata", resizeWindowToVideo);
+    els.video.addEventListener("resize", resizeWindowToVideo);
+    resizeWindowToVideo();
   };
 
   const decline = () => {
@@ -161,92 +190,48 @@ function requestDialog(host, stream, peer) {
 }
 
 function resizeWindowToVideo() {
-  const tick = () => {
-    if (els.video.videoWidth && els.video.videoHeight) {
-      ipcRenderer.send("set-window-size", {
-        width: els.video.videoWidth,
-        height: els.video.videoHeight,
-      });
-    }
-  };
-  tick();
-  setInterval(tick, 1000);
+  if (!els.video.videoWidth || !els.video.videoHeight) return;
+  const dpr = window.devicePixelRatio || 1;
+  ipcRenderer.send("set-window-size", {
+    width: els.video.videoWidth / dpr,
+    height: els.video.videoHeight / dpr,
+  });
 }
 
 /* ---------------- Sender ---------------- */
 
 async function sendWindow() {
-  let sources;
-  try {
-    sources = await ipcRenderer.invoke("get-sources");
-  } catch (err) {
-    console.error("Failed to get sources:", err);
-    return;
-  }
-
-  const source = await pickSource(sources);
-  if (!source) return;
-
+  console.log("[Pass] sendWindow: requesting display media");
   let stream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video: true,
       audio: false,
-      video: {
-        mandatory: {
-          chromeMediaSource: "desktop",
-          chromeMediaSourceId: source.id,
-          maxWidth: 1920,
-          maxHeight: 1080,
-        },
-      },
     });
   } catch (err) {
-    console.error("getUserMedia failed:", err);
+    console.error("[Pass] getDisplayMedia failed:", err.name, err.message);
     return;
   }
 
+  console.log("[Pass] got stream, tracks:", stream.getTracks().length);
   const peers = await findPeers();
+  console.log("[Pass] showing peer picker with", peers.length, "peers");
   const target = await pickPeer(peers);
   if (!target) {
+    console.log("[Pass] no peer selected, stopping stream");
     stream.getTracks().forEach((t) => t.stop());
     return;
   }
 
-  connectAndSend(target, stream);
-}
-
-function pickSource(sources) {
-  return new Promise((resolve) => {
-    els.pickSourceList.innerHTML = "";
-    sources.forEach((s, i) => {
-      const item = document.createElement("label");
-      item.className = "row";
-      item.innerHTML = `<input type="radio" name="source" value="${i}"> ${escapeHtml(s.name)}`;
-      els.pickSourceList.appendChild(item);
+  console.log("[Pass] selected target:", target.name);
+  stream.getVideoTracks().forEach((t) => {
+    t.addEventListener("ended", () => {
+      console.log("[Pass] source track ended");
+      teardownSender(stream);
     });
-    showModal(els.pickSourceModal);
-
-    const cancel = () => {
-      cleanup();
-      hideModal(els.pickSourceModal);
-      resolve(null);
-    };
-
-    const onSelect = (e) => {
-      if (e.target.name !== "source") return;
-      cleanup();
-      hideModal(els.pickSourceModal);
-      resolve(sources[parseInt(e.target.value, 10)]);
-    };
-
-    function cleanup() {
-      els.pickSourceCancel.removeEventListener("click", cancel);
-      els.pickSourceList.removeEventListener("change", onSelect);
-    }
-
-    els.pickSourceCancel.addEventListener("click", cancel);
-    els.pickSourceList.addEventListener("change", onSelect);
   });
+
+  connectAndSend(target, stream);
 }
 
 function pickPeer(peers) {
@@ -367,8 +352,8 @@ function teardownSender(stream) {
 
 function showModal(el) {
   el.classList.add("visible");
-  ipcRenderer.send("show-window");
   ipcRenderer.send("set-window-size", { width: 480, height: 320 });
+  ipcRenderer.send("show-window", { center: true, alwaysOnTop: true });
 }
 
 function hideModal(el) {
@@ -376,6 +361,8 @@ function hideModal(el) {
   const anyVisible = document.querySelector(".modal.visible");
   if (!anyVisible && !els.video.srcObject) {
     ipcRenderer.send("hide-window");
+  } else if (els.video.srcObject) {
+    ipcRenderer.send("show-window", { alwaysOnTop: false });
   }
 }
 
